@@ -198,6 +198,10 @@ class RiverModule {
       else riversData[riverId].push(cellId);
     };
 
+    // Accumulate in floats: per-cell rain is precipitation / cellsNumberModifier, which drops
+    // below 1 at high density and truncates to nothing in the Uint16 flux array
+    const flux = new Float64Array(cells.i.length);
+
     const drainWater = () => {
       const cellsNumberModifier = (options.map.graph.points / 10000) ** 0.25;
 
@@ -206,7 +210,7 @@ class RiverModule {
       const lakeOutCells = Lakes.defineClimateData(h);
 
       for (const i of land) {
-        cells.fl[i] += prec[cells.g[i]] / cellsNumberModifier; // add flux from precipitation
+        flux[i] += prec[cells.g[i]] / cellsNumberModifier; // add flux from precipitation
 
         // create lake outlet if lake is not in deep depression and flux > evaporation
         const lakes = lakeOutCells[i]
@@ -214,7 +218,7 @@ class RiverModule {
           : [];
         for (const lake of lakes) {
           const lakeCell = cells.c[i].find((c: number) => h[c] < 20 && cells.f[c] === lake.i)!;
-          cells.fl[lakeCell] += Math.max(lake.flux - lake.evaporation, 0); // not evaporated lake water drains to outlet
+          flux[lakeCell] += Math.max(lake.flux - lake.evaporation, 0); // not evaporated lake water drains to outlet
 
           // allow chain lakes to retain identity
           if (cells.r[lakeCell] !== lake.river) {
@@ -231,7 +235,7 @@ class RiverModule {
           }
 
           lake.outlet = cells.r[lakeCell];
-          flowDown(i, cells.fl[lakeCell], lake.outlet);
+          flowDown(i, flux[lakeCell], lake.outlet);
         }
 
         // assign all tributary rivers to outlet basin
@@ -272,9 +276,9 @@ class RiverModule {
         //   .attr("stroke", "#333")
         //   .attr("stroke-width", 0.2);
 
-        if (cells.fl[i] < MIN_FLUX_TO_FORM_RIVER) {
+        if (flux[i] < MIN_FLUX_TO_FORM_RIVER) {
           // flux is too small to operate as a river
-          if (h[min] >= 20) cells.fl[min] += cells.fl[i];
+          if (h[min] >= 20) flux[min] += flux[i];
           continue;
         }
 
@@ -285,18 +289,18 @@ class RiverModule {
           riverNext++;
         }
 
-        flowDown(min, cells.fl[i], cells.r[i]);
+        flowDown(min, flux[i], cells.r[i]);
       }
     };
 
     const flowDown = (toCell: number, fromFlux: number, river: number) => {
-      const toFlux = cells.fl[toCell] - cells.conf[toCell];
+      const toFlux = flux[toCell] - cells.conf[toCell];
       const toRiver = cells.r[toCell];
 
       if (toRiver) {
         // downhill cell already has river assigned
         if (fromFlux > toFlux) {
-          cells.conf[toCell] += cells.fl[toCell]; // mark confluence
+          cells.conf[toCell] += flux[toCell]; // mark confluence
           if (h[toCell] >= 20) riverParents[toRiver] = river; // min river is a tributary of current river
           cells.r[toCell] = river; // re-assign river if downhill part has less flux
         } else {
@@ -319,7 +323,7 @@ class RiverModule {
         }
       } else {
         // propagate flux and add next river segment
-        cells.fl[toCell] += fromFlux;
+        flux[toCell] += fromFlux;
       }
 
       addCellToRiver(toCell, river);
@@ -420,6 +424,7 @@ class RiverModule {
     Lakes.detectCloseLakes(h);
     this.resolveDepressions(h);
     drainWater();
+    for (let i = 0; i < flux.length; i++) cells.fl[i] = Math.min(Math.round(flux[i]), 65535);
     defineRivers();
 
     calculateConfluenceFlux();
