@@ -148,6 +148,9 @@ const fractious = `Hill 12-15 50-80 5-95 5-95
   Add -20 30-100 0 0
   Range 6-8 40-50 5-95 10-90`;
 
+// River-first variants: the base template only shapes the coast and the rough relief, then the Rivers step rebuilds land heights
+const riverStep = "\n  Rivers 80-95 0 0 0";
+
 export type HeightmapTemplate = {
   id: number;
   name: string;
@@ -169,7 +172,11 @@ export const heightmapTemplates: Record<string, HeightmapTemplate> = {
   shattered: { id: 10, name: "Shattered", template: shattered, probability: 7 },
   taklamakan: { id: 11, name: "Taklamakan", template: taklamakan, probability: 1 },
   oldWorld: { id: 12, name: "Old World", template: oldWorld, probability: 8 },
-  fractious: { id: 13, name: "Fractious", template: fractious, probability: 3 }
+  fractious: { id: 13, name: "Fractious", template: fractious, probability: 3 },
+  riverContinents: { id: 14, name: "River Continents", template: continents + riverStep, probability: 0 },
+  riverPangea: { id: 15, name: "River Pangea", template: pangea + riverStep, probability: 0 },
+  riverOldWorld: { id: 16, name: "River Old World", template: oldWorld + riverStep, probability: 0 },
+  riverHighIsland: { id: 17, name: "River High Island", template: highIsland + riverStep, probability: 0 }
 };
 
 declare global {

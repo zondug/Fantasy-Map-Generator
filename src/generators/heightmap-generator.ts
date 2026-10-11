@@ -4,12 +4,24 @@ import type { MapData } from "@/components/options-schema";
 import { heightmapTemplates } from "@/data/heightmap-templates";
 import type { GridGraph } from "@/types/GridGraph";
 import { getNumberInRange, lim, minmax, P, rand } from "../utils";
+import { RIVER_RELIEF_DEFAULTS, riverRelief } from "./river-relief";
 
 declare global {
   var HeightmapGenerator: HeightmapModule;
 }
 
-type Tool = "Hill" | "Pit" | "Range" | "Trough" | "Strait" | "Mask" | "Invert" | "Add" | "Multiply" | "Smooth";
+type Tool =
+  | "Hill"
+  | "Pit"
+  | "Range"
+  | "Trough"
+  | "Strait"
+  | "Mask"
+  | "Invert"
+  | "Add"
+  | "Multiply"
+  | "Smooth"
+  | "Rivers";
 
 class HeightmapModule {
   grid: any = null;
@@ -505,6 +517,13 @@ class HeightmapModule {
     this.heights = inverted;
   }
 
+  /** rebuild land heights from a river network grown inland from the coast. `top` is the highest land height */
+  carveRivers(top: string, inertia = RIVER_RELIEF_DEFAULTS.inertia): void {
+    if (!this.heights || !this.grid) return;
+    const options = { ...RIVER_RELIEF_DEFAULTS, inertia, top: getNumberInRange(top), random: Math.random };
+    this.heights = riverRelief(this.grid, this.heights, options).heights;
+  }
+
   addStep(tool: Tool, a2: string, a3: string, a4: string, a5: string): void {
     if (tool === "Hill") {
       this.addHill(a2, a3, a4, a5);
@@ -544,6 +563,10 @@ class HeightmapModule {
     }
     if (tool === "Smooth") {
       this.smooth(+a2);
+      return;
+    }
+    if (tool === "Rivers") {
+      this.carveRivers(a2, a3 && +a3 ? +a3 : undefined);
       return;
     }
   }
