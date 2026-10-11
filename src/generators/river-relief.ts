@@ -19,10 +19,12 @@ export type RiverReliefOptions = {
   costNoise: number; // per-cell slope noise, breaks the square-grid bias
   smooth: number; // land smoothing passes before ranking, removes cell-scale speckle
   reliefWeight: number; // share of the template relief kept in the final ranking, 0 = pure river relief
+  ridges?: Float32Array; // per-cell height added by template Range steps
+  ridgeWeight: number; // extra slope cost on those ridges, 0 = ignore them
   random: () => number;
 };
 
-export const RIVER_RELIEF_DEFAULTS: Omit<RiverReliefOptions, "random" | "top"> = {
+export const RIVER_RELIEF_DEFAULTS: Omit<RiverReliefOptions, "random" | "top" | "ridges"> = {
   inertia: 0.4,
   jitter: 0.1,
   downcut: 1.3,
@@ -31,7 +33,8 @@ export const RIVER_RELIEF_DEFAULTS: Omit<RiverReliefOptions, "random" | "top"> =
   coastRamp: 0.25,
   costNoise: 0.1,
   smooth: 2,
-  reliefWeight: 0
+  reliefWeight: 0,
+  ridgeWeight: 4
 };
 
 // land height quantiles of the REX INVIS peaks generator: keeps mountain and hill shares, changes only their placement
@@ -101,7 +104,17 @@ export function riverRelief(
   }
   for (let i = 0; i < n; i++) delta[i] = Math.max(options.minDelta, delta[i] / deltaMax);
 
-  const preliminary = coastDijkstra(graph, sea, delta, null, null, 0, Infinity);
+  // template ranges stay costly to climb, so they rise as divides and rivers grow away from them
+  const ridgeFactor = new Float32Array(n).fill(1);
+  if (options.ridges && options.ridgeWeight > 0) {
+    let ridgeMax = 0;
+    for (let i = 0; i < n; i++) ridgeMax = Math.max(ridgeMax, options.ridges[i]);
+    if (ridgeMax > 0)
+      for (let i = 0; i < n; i++) ridgeFactor[i] += (options.ridgeWeight * options.ridges[i]) / ridgeMax;
+  }
+  for (let i = 0; i < n; i++) delta[i] *= ridgeFactor[i];
+
+  const preliminary = coastDijkstra(graph, sea, delta, ridgeFactor, null, null, 0, Infinity);
 
   // grow the network uphill from every coast edge, preferring steps aligned with the previous direction
   const down = new Int32Array(n).fill(-1);
@@ -170,7 +183,7 @@ export function riverRelief(
   const rainMean = Math.max(1e-6, rainSum / Math.max(1, order.length));
   const relativeFlux = flux.map(f => f / rainMean);
 
-  const carved = coastDijkstra(graph, sea, delta, down, relativeFlux, options.downcut, options.maxDelta);
+  const carved = coastDijkstra(graph, sea, delta, ridgeFactor, down, relativeFlux, options.downcut, options.maxDelta);
 
   // channels must fall downstream
   const sortedFlux = order.map(cell => flux[cell]).sort((a, b) => a - b);
@@ -249,11 +262,12 @@ function markSea(graph: RiverReliefGraph, source: Uint8Array): Uint8Array {
   return sea;
 }
 
-/** height = cheapest climb from the coast; edges along the drainage tree are discounted by their flux */
+/** height = cheapest climb from the coast; edges along the drainage tree are discounted by their flux, ridges raise the step cap */
 function coastDijkstra(
   graph: RiverReliefGraph,
   sea: Uint8Array,
   delta: Float32Array,
+  capFactor: Float32Array,
   down: Int32Array | null,
   relativeFlux: Float32Array | null,
   downcut: number,
@@ -279,7 +293,7 @@ function coastDijkstra(
       const d = Math.hypot(points[cell][0] - points[next][0], points[cell][1] - points[next][1]) / spacing;
       let cost = delta[next] * d;
       if (down && relativeFlux && downcut > 0 && down[next] === cell) cost /= 1 + relativeFlux[next] ** downcut;
-      heap.push(key + Math.min(cap * d, cost), next);
+      heap.push(key + Math.min(cap * capFactor[next] * d, cost), next);
     }
   }
   for (let i = 0; i < n; i++) if (height[i] < 0) height[i] = 0;

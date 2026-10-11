@@ -5,6 +5,7 @@ import { RIVER_RELIEF_DEFAULTS, riverRelief } from "./river-relief";
 
 let graph: GridGraph;
 let base: Uint8Array;
+let ridges: Float32Array;
 
 beforeAll(async () => {
   globalThis.TIME = false;
@@ -15,6 +16,7 @@ beforeAll(async () => {
   graph = Grid.generate("4242", config.width, config.height, config.points);
   Math.random = Alea("4242");
   base = HeightmapGenerator.fromTemplate(graph, "continents", config);
+  ridges = Float32Array.from(HeightmapGenerator.ridges as Float32Array);
 });
 
 const run = (seed: string) => riverRelief(graph, base, { ...RIVER_RELIEF_DEFAULTS, top: 90, random: Alea(seed) });
@@ -41,6 +43,22 @@ describe("riverRelief", () => {
     const big = [...land].sort((a, b) => flux[b] - flux[a]).slice(0, Math.ceil(land.length * 0.02));
     const meanRank = big.reduce((sum, cell) => sum + (rank.get(cell) as number), 0) / big.length;
     expect(meanRank).toBeLessThan(0.3);
+  });
+
+  it("raises template ranges into the highest ground", () => {
+    const ridgeShare = (weight: number) => {
+      const { heights } = riverRelief(graph, base, {
+        ...RIVER_RELIEF_DEFAULTS,
+        top: 90,
+        ridges,
+        ridgeWeight: weight,
+        random: Alea("5")
+      });
+      const land = [...heights.keys()].filter(i => heights[i] >= 20).sort((a, b) => heights[b] - heights[a]);
+      const high = land.slice(0, Math.ceil(land.length * 0.05));
+      return high.reduce((sum, cell) => sum + ridges[cell], 0) / high.length;
+    };
+    expect(ridgeShare(4)).toBeGreaterThan(ridgeShare(0));
   });
 
   it("runs as a template step", () => {

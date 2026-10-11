@@ -26,6 +26,7 @@ type Tool =
 class HeightmapModule {
   grid: any = null;
   heights: Uint8Array | null = null;
+  ridges: Float32Array | null = null; // height added by Range steps, kept for the Rivers step
   blobPower: number = 0;
   linePower: number = 0;
   private width = 0;
@@ -34,6 +35,7 @@ class HeightmapModule {
   /** drop the graph and heights copy; the caller owns the grid, keeping it here pins a replaced world */
   clearData() {
     this.heights = null;
+    this.ridges = null;
     this.grid = null;
   }
 
@@ -92,6 +94,7 @@ class HeightmapModule {
     this.width = config.width;
     this.height = config.height;
     this.heights = Uint8Array.from(graph.cells.h);
+    this.ridges = new Float32Array(this.heights.length);
     this.blobPower = this.getBlobPower(cellsDesired);
     this.linePower = this.getLinePower(cellsDesired);
     this.grid = graph;
@@ -246,6 +249,7 @@ class HeightmapModule {
         frontier.forEach((i: number) => {
           if (!this.heights) return;
           this.heights[i] = lim(this.heights[i] + h * (Math.random() * 0.3 + 0.85));
+          if (this.ridges) this.ridges[i] = Math.max(this.ridges[i], h);
         });
         h = h ** this.linePower - 1;
         if (h < 2) break;
@@ -518,9 +522,21 @@ class HeightmapModule {
   }
 
   /** rebuild land heights from a river network grown inland from the coast. `top` is the highest land height */
-  carveRivers(top: string, inertia = RIVER_RELIEF_DEFAULTS.inertia): void {
+  carveRivers(
+    top: string,
+    inertia = RIVER_RELIEF_DEFAULTS.inertia,
+    ridgeWeight = RIVER_RELIEF_DEFAULTS.ridgeWeight
+  ): void {
     if (!this.heights || !this.grid) return;
-    const options = { ...RIVER_RELIEF_DEFAULTS, inertia, top: getNumberInRange(top), random: Math.random };
+    const ridges = this.ridges ?? undefined;
+    const options = {
+      ...RIVER_RELIEF_DEFAULTS,
+      inertia,
+      ridgeWeight,
+      ridges,
+      top: getNumberInRange(top),
+      random: Math.random
+    };
     this.heights = riverRelief(this.grid, this.heights, options).heights;
   }
 
@@ -566,7 +582,7 @@ class HeightmapModule {
       return;
     }
     if (tool === "Rivers") {
-      this.carveRivers(a2, a3 && +a3 ? +a3 : undefined);
+      this.carveRivers(a2, a3 && +a3 ? +a3 : undefined, a4 !== undefined && a4 !== "" ? +a4 : undefined);
       return;
     }
   }
