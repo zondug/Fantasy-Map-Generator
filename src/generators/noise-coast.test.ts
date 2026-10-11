@@ -68,6 +68,26 @@ describe("noiseCoast", () => {
     }
   });
 
+  it("leaves no deep band along the map edge", () => {
+    const { heights } = run(coarse, "i", 0.4, 3, 5);
+    let rim = 0;
+    let rimCount = 0;
+    let open = 0;
+    let openCount = 0;
+    coarse.points.forEach(([x, y]: [number, number], i: number) => {
+      if (heights[i] >= 20) return;
+      const d = Math.min(x, W - x, y, H - y);
+      if (d < H * 0.05) {
+        rim += heights[i];
+        rimCount++;
+      } else if (d > H * 0.15) {
+        open += heights[i];
+        openCount++;
+      }
+    });
+    expect(rim / rimCount).toBeGreaterThan(open / openCount - 3);
+  });
+
   it("places no ridges when ranges is 0", () => {
     expect(run(coarse, "d", 0.45, 0).ridges.some(r => r > 0)).toBe(false);
   });

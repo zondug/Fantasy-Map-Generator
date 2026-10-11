@@ -33,7 +33,8 @@ Replaces the heightmap with a coastline and mountain ridges that do not depend o
    1.35 × `land%` of the map, their distance domain-warped by noise so they do not read as circles. Every circle,
    warp included, is pulled (or shrunk) to stay 0.25 × half-size off the edge, and a shelf over the outer
    0.25 × half-size lowers the ranking quadratically toward the edge, so shores bend away instead of being cut:
-   land ends about 0.2 × half-size from every edge.
+   land ends about 0.2 × half-size from every edge. The shelf only ranks land and sea: sea depth is shaded from the
+   noise without it, plus a shallow coastal shelf over 0.12 × half-size, so the finished map has no dark edge band.
 2. Peaks = up to `ranges` points on a fixed 96-column lattice, inland past 30% of the deepest coast distance,
    ranked by ridged noise and kept `half / (ranges + 1)` apart. The first peak is 1, others 0.55–0.8.
 3. Ridges = segments between peaks closer than 0.45 × half-size (with a saddle), and a wandering two-way tail for lone peaks.

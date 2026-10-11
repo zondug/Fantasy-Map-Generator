@@ -97,7 +97,8 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
       }
     }
   }
-  const coastAt = (x: number, y: number) => {
+  // rank decides land and sea; depth only shades the sea, so the edge shelf that keeps land away leaves no dark band
+  const coastAt = (x: number, y: number, forDepth = false) => {
     const u = (x - width / 2) / half;
     const v = (y - height / 2) / half;
     const e = (fbm(coastNoise, u * options.frequency, v * options.frequency, options.octaves) + 1) / 2;
@@ -107,6 +108,7 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
       return e - fall ** options.islandPower * options.islandStrength;
     }
     const inside = circleInside(x, y);
+    if (forDepth) return e - options.islandStrength + Math.max(-0.6, Math.min(inside, 0)) * 1.5;
     // a band along the map edge always ranks lowest, so land can never touch it whatever the circles do
     const edge = Math.min(x, width - x, y, height - y) / (shelfWidth * 2.5);
     const shelf = edge < 1 ? (1 - edge) ** 2 * 4 : 0; // gentle far out, steep near the edge: shores bend away instead of being cut
@@ -115,24 +117,50 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
     return e - (1 - Math.min(1, inside * 1.5)) ** options.islandPower * options.islandStrength - shelf;
   };
   const elevation = new Float32Array(n);
-  for (let i = 0; i < n; i++) elevation[i] = graph.cells.b[i] ? -1 : coastAt(points[i][0], points[i][1]);
+  for (let i = 0; i < n; i++) elevation[i] = graph.cells.b[i] ? -9 : coastAt(points[i][0], points[i][1]);
   const sorted = Float32Array.from(elevation).sort();
   const landShare = Math.min(0.95, Math.max(0.02, options.land));
   const threshold = sorted[Math.min(n - 1, Math.floor(n * (1 - landShare)))];
 
+  const depth = new Float32Array(n);
   let low = Infinity;
+  let shore = -Infinity;
   let top = -Infinity;
   for (let i = 0; i < n; i++) {
-    if (elevation[i] >= threshold) top = Math.max(top, elevation[i]);
-    else low = Math.min(low, elevation[i]);
+    if (elevation[i] >= threshold) {
+      top = Math.max(top, elevation[i]);
+      continue;
+    }
+    depth[i] = circles.length ? coastAt(points[i][0], points[i][1], true) : elevation[i];
+    low = Math.min(low, depth[i]);
+    shore = Math.max(shore, depth[i]);
   }
   const heights = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    const e = elevation[i];
     heights[i] =
-      e >= threshold
-        ? SEA_LEVEL + Math.round(((e - threshold) / Math.max(1e-6, top - threshold)) * 25)
-        : Math.round(((e - low) / Math.max(1e-6, threshold - low)) * (SEA_LEVEL - 1));
+      elevation[i] >= threshold
+        ? SEA_LEVEL + Math.round(((elevation[i] - threshold) / Math.max(1e-6, top - threshold)) * 25)
+        : Math.round(((depth[i] - low) / Math.max(1e-6, shore - low)) * (SEA_LEVEL - 1));
+  }
+  // shallow shelf: water stays shallow near land and deepens over ~0.12 × half-size, so no shore drops straight to the deep
+  const shelfDepth = new Float32Array(n).fill(Infinity);
+  const shelfQueue: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (elevation[i] < threshold) continue;
+    shelfDepth[i] = 0;
+    shelfQueue.push(i);
+  }
+  const shelfReach = half * 0.12;
+  for (let head = 0; head < shelfQueue.length; head++) {
+    const cell = shelfQueue[head];
+    for (const next of graph.cells.c[cell]) {
+      if (shelfDepth[next] !== Infinity) continue;
+      const d = shelfDepth[cell] + Math.hypot(points[cell][0] - points[next][0], points[cell][1] - points[next][1]);
+      if (d > shelfReach) continue;
+      shelfDepth[next] = d;
+      heights[next] = Math.max(heights[next], Math.round((SEA_LEVEL - 1) * (1 - (d / shelfReach) * 0.6)));
+      shelfQueue.push(next);
+    }
   }
 
   const ridges = new Float32Array(n);
