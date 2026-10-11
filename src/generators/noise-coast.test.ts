@@ -4,8 +4,8 @@ import { NOISE_COAST_DEFAULTS, noiseCoast } from "./noise-coast";
 
 const W = 960;
 const H = 540;
-const run = (graph: any, seed: string, land = 0.45, ranges = 3) =>
-  noiseCoast(graph, { ...NOISE_COAST_DEFAULTS, width: W, height: H, land, ranges, random: Alea(seed) });
+const run = (graph: any, seed: string, land = 0.45, ranges = 3, blobs = 0) =>
+  noiseCoast(graph, { ...NOISE_COAST_DEFAULTS, width: W, height: H, land, ranges, blobs, random: Alea(seed) });
 
 let coarse: any;
 let fine: any;
@@ -48,6 +48,13 @@ describe("noiseCoast", () => {
     });
     expect(same / coarse.points.length).toBeGreaterThan(0.95);
     expect(ridgeSame / ridgeCells).toBeGreaterThan(0.9);
+  });
+
+  it("keeps the land share and the seed result with scattered circles", () => {
+    const { heights } = run(coarse, "e", 0.4, 3, 5);
+    expect(heights.filter(h => h >= 20).length / heights.length).toBeCloseTo(0.4, 2);
+    expect(run(coarse, "e", 0.4, 3, 5).heights).toEqual(heights);
+    expect(run(coarse, "e", 0.4, 3, 0).heights).not.toEqual(heights);
   });
 
   it("places no ridges when ranges is 0", () => {

@@ -21,14 +21,16 @@ Measured on a 10k-cell grid: the top 2% flux cells sit at land height percentile
 19–25 with 0.3 (templates alone: 29–49). The step costs about 45 ms at 10k cells.
 With ridgeWeight 6 (5 seeds): high-ground clusters (top 8% land) 5–16 vs 14–26 at 0, river percentile 16–19.
 
-## Noise coast (`Coast <land%> <ranges>`)
+## Noise coast (`Coast <land%> <ranges> [circles]`)
 
 Replaces the heightmap with a coastline and mountain ridges that do not depend on the cell count, so it can feed
 `Rivers` instead of a template. Code: `src/generators/noise-coast.ts`, ported from REX INVIS `MapGen.gd`
 (mapgen2-style coast, mapgen4-style peak seeds).
 
-1. Coast = simplex fbm sampled in map-relative coordinates minus an elliptic edge falloff; the sea threshold is the
-   quantile that gives exactly `land%`. The map edge is always water.
+1. Coast = simplex fbm sampled in map-relative coordinates minus a mask falloff; the sea threshold is the
+   quantile that gives exactly `land%`. The map edge is always water. Mask: `circles` 0 = one central ellipse;
+   N = N circles at random centers (12% margin) with radii 0.25–0.6 × half-size, scaled together until they cover
+   1.35 × `land%` of the map, their distance domain-warped by noise so they do not read as circles.
 2. Peaks = up to `ranges` points on a fixed 96-column lattice, inland past 30% of the deepest coast distance,
    ranked by ridged noise and kept `half / (ranges + 1)` apart. The first peak is 1, others 0.55–0.8.
 3. Ridges = segments between peaks closer than 0.45 × half-size (with a saddle), and a wandering two-way tail for lone peaks.
@@ -36,7 +38,7 @@ Replaces the heightmap with a coastline and mountain ridges that do not depend o
    `ridgeWeight` input, like template `Range` steps do.
 
 Presets (probability 0): `noiseMainland` (55–65% land, 4 ranges), `noiseContinent` (40–50%, 3),
-`noiseIsland` (25–35%, 2), each followed by `Rivers 80-95 0 6 0`.
+`noiseIsland` (25–35%, 2), `noiseScattered` (35–50%, 3 ranges, 3–6 circles), each followed by `Rivers 80-95 0 6 0`.
 
 Coast length per √land cells stays 8.4–9.6 from 10k to 200k cells (FMG `continents`: 11.8 at 10k, 36.1 at 200k,
 because Hill spreading compounds its random factor over more steps). `Rivers` smoothing passes now scale with

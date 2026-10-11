@@ -11,12 +11,15 @@ export type NoiseCoastOptions = {
   height: number;
   land: number; // land share of all cells, 0-1
   ranges: number; // mountain range seeds, 0 = none
+  blobs: number; // land mask: 0 = one central ellipse, N = N circles scattered at random
   random: () => number;
   frequency: number; // coastline noise cycles per map half-size
   octaves: number;
   islandStart: number; // normalized center distance where the edge falloff starts
   islandPower: number;
   islandStrength: number;
+  blobRadius: [number, number];
+  blobMargin: number;
   ridgeWidth: number; // ridge band half-width as a share of the map half-size
   connectDistance: number; // peaks closer than this share of the half-size are joined by a ridge
   tailLength: number; // ridge tail of an isolated peak, share of the half-size
@@ -28,6 +31,8 @@ export const NOISE_COAST_DEFAULTS = {
   islandStart: 0.65,
   islandPower: 0.8,
   islandStrength: 0.7,
+  blobRadius: [0.25, 0.6] as [number, number], // circle radius range, share of the half-size
+  blobMargin: 0.12, // circle centers keep this share of the map size away from the edge
   ridgeWidth: 0.045,
   connectDistance: 0.45,
   tailLength: 1
@@ -46,14 +51,47 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
   const { width, height, random } = options;
   const half = Math.min(width, height) / 2;
 
-  // 1) coast: fbm noise minus an elliptic edge falloff, cut at the quantile that gives the requested land share
+  // 1) coast: fbm noise minus a mask falloff, cut at the quantile that gives the requested land share.
+  // The mask is one central ellipse, or circles scattered at random; the map edge always falls off
   const coastNoise = simplex(random);
+  const circles: [number, number, number][] = [];
+  for (let k = 0; k < options.blobs; k++) {
+    const m = options.blobMargin;
+    const [r0, r1] = options.blobRadius;
+    const x = width * (m + random() * (1 - 2 * m));
+    const y = height * (m + random() * (1 - 2 * m));
+    circles.push([x, y, half * (r0 + random() * (r1 - r0))]);
+  }
+  const edgeStart = circles.length ? 0.85 : options.islandStart;
+  const warpX = simplex(random);
+  const warpY = simplex(random);
+  const circleInside = (x: number, y: number) => {
+    const wx = x + half * 0.3 * fbm(warpX, (x / half) * 1.5, (y / half) * 1.5, 3);
+    const wy = y + half * 0.3 * fbm(warpY, (x / half) * 1.5, (y / half) * 1.5, 3);
+    let inside = 0;
+    for (const [cx, cy, r] of circles) inside = Math.max(inside, 1 - Math.hypot(wx - cx, wy - cy) / r);
+    return inside;
+  };
+  // scale the circles so they cover a bit more than the land share: the land then sits inside them, not in stray shards
+  if (circles.length) {
+    for (let pass = 0; pass < 4; pass++) {
+      let covered = 0;
+      const samples = 64 * 36;
+      for (let k = 0; k < samples; k++) {
+        if (circleInside(((k % 64) + 0.5) * (width / 64), (Math.floor(k / 64) + 0.5) * (height / 36)) > 0) covered++;
+      }
+      const scale = Math.sqrt((Math.min(0.95, options.land * 1.35) * samples) / Math.max(1, covered));
+      if (Math.abs(scale - 1) < 0.03) break;
+      for (const circle of circles) circle[2] *= Math.min(2, Math.max(0.5, scale));
+    }
+  }
   const coastAt = (x: number, y: number) => {
     const u = (x - width / 2) / half;
     const v = (y - height / 2) / half;
     const e = (fbm(coastNoise, u * options.frequency, v * options.frequency, options.octaves) + 1) / 2;
     const nd = Math.hypot((x - width / 2) / (width / 2), (y - height / 2) / (height / 2));
-    const fall = Math.min(1, Math.max(0, (nd - options.islandStart) / (1 - options.islandStart)));
+    let fall = Math.min(1, Math.max(0, (nd - edgeStart) / (1 - edgeStart)));
+    if (circles.length) fall = Math.max(fall, 1 - Math.min(1, Math.max(0, circleInside(x, y)) * 1.5));
     return e - fall ** options.islandPower * options.islandStrength;
   };
   const elevation = new Float32Array(n);

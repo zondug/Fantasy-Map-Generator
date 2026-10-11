@@ -540,8 +540,8 @@ class HeightmapModule {
     this.heights = inverted;
   }
 
-  /** replace the heightmap with a noise coastline of the given land share (%) and mountain ridges */
-  addCoast(land: string, ranges: string): void {
+  /** replace the heightmap with a noise coastline of the given land share (%), mountain ridges and land mask circles (0 = one ellipse) */
+  addCoast(land: string, ranges: string, blobs = "0"): void {
     if (!this.heights || !this.grid) return;
     const options = {
       ...NOISE_COAST_DEFAULTS,
@@ -549,6 +549,7 @@ class HeightmapModule {
       height: this.height,
       land: getNumberInRange(land) / 100,
       ranges: Math.max(0, Math.round(getNumberInRange(ranges))),
+      blobs: Math.max(0, Math.round(getNumberInRange(blobs || "0"))),
       random: Math.random
     };
     const { heights, ridges } = noiseCoast(this.grid, options);
@@ -621,7 +622,7 @@ class HeightmapModule {
       return;
     }
     if (tool === "Coast") {
-      this.addCoast(a2, a3);
+      this.addCoast(a2, a3, a4);
       return;
     }
     if (tool === "Rivers") {
