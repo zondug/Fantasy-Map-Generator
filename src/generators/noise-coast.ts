@@ -32,7 +32,7 @@ export const NOISE_COAST_DEFAULTS = {
   islandPower: 0.8,
   islandStrength: 0.7,
   blobRadius: [0.25, 0.6] as [number, number], // circle radius range, share of the half-size
-  blobMargin: 0.12, // circle centers keep this share of the map size away from the edge
+  blobMargin: 0.1, // every circle, warp included, stays this share of the map half-size off the edge
   ridgeWidth: 0.045,
   connectDistance: 0.45,
   tailLength: 1
@@ -62,16 +62,25 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
     const y = height * (m + random() * (1 - 2 * m));
     circles.push([x, y, half * (r0 + random() * (r1 - r0))]);
   }
-  const edgeStart = circles.length ? 0.85 : options.islandStart;
+  const warp = half * 0.15; // fbm of 3 octaves stays inside ±1, so the warp moves a shore at most this far
+  const keepOff = half * options.blobMargin + warp;
+  const shelfWidth = half * options.blobMargin;
+  // pull a circle fully inside the map; one too large for the map is shrunk to fit
+  const keepInside = (circle: [number, number, number]) => {
+    circle[2] = Math.min(circle[2], width / 2 - keepOff, height / 2 - keepOff);
+    circle[0] = Math.min(width - keepOff - circle[2], Math.max(keepOff + circle[2], circle[0]));
+    circle[1] = Math.min(height - keepOff - circle[2], Math.max(keepOff + circle[2], circle[1]));
+  };
   const warpX = simplex(random);
   const warpY = simplex(random);
   const circleInside = (x: number, y: number) => {
-    const wx = x + half * 0.3 * fbm(warpX, (x / half) * 1.5, (y / half) * 1.5, 3);
-    const wy = y + half * 0.3 * fbm(warpY, (x / half) * 1.5, (y / half) * 1.5, 3);
+    const wx = x + warp * fbm(warpX, (x / half) * 1.5, (y / half) * 1.5, 3);
+    const wy = y + warp * fbm(warpY, (x / half) * 1.5, (y / half) * 1.5, 3);
     let inside = 0;
     for (const [cx, cy, r] of circles) inside = Math.max(inside, 1 - Math.hypot(wx - cx, wy - cy) / r);
     return inside;
   };
+  for (const circle of circles) keepInside(circle);
   // scale the circles so they cover a bit more than the land share: the land then sits inside them, not in stray shards
   if (circles.length) {
     for (let pass = 0; pass < 4; pass++) {
@@ -82,7 +91,10 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
       }
       const scale = Math.sqrt((Math.min(0.95, options.land * 1.35) * samples) / Math.max(1, covered));
       if (Math.abs(scale - 1) < 0.03) break;
-      for (const circle of circles) circle[2] *= Math.min(2, Math.max(0.5, scale));
+      for (const circle of circles) {
+        circle[2] *= Math.min(2, Math.max(0.5, scale));
+        keepInside(circle);
+      }
     }
   }
   const coastAt = (x: number, y: number) => {
@@ -90,9 +102,17 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
     const v = (y - height / 2) / half;
     const e = (fbm(coastNoise, u * options.frequency, v * options.frequency, options.octaves) + 1) / 2;
     const nd = Math.hypot((x - width / 2) / (width / 2), (y - height / 2) / (height / 2));
-    let fall = Math.min(1, Math.max(0, (nd - edgeStart) / (1 - edgeStart)));
-    if (circles.length) fall = Math.max(fall, 1 - Math.min(1, Math.max(0, circleInside(x, y)) * 1.5));
-    return e - fall ** options.islandPower * options.islandStrength;
+    if (!circles.length) {
+      const fall = Math.min(1, Math.max(0, (nd - options.islandStart) / (1 - options.islandStart)));
+      return e - fall ** options.islandPower * options.islandStrength;
+    }
+    const inside = circleInside(x, y);
+    // a band along the map edge always ranks lowest, so land can never touch it whatever the circles do
+    const edge = Math.min(x, width - x, y, height - y) / (shelfWidth * 2.5);
+    const shelf = edge < 1 ? (1 - edge) ** 2 * 4 : 0; // gentle far out, steep near the edge: shores bend away instead of being cut
+    // past a circle the shore can wander out a little, then the floor drops with distance
+    if (inside <= 0) return e - options.islandStrength + inside * 6 - shelf;
+    return e - (1 - Math.min(1, inside * 1.5)) ** options.islandPower * options.islandStrength - shelf;
   };
   const elevation = new Float32Array(n);
   for (let i = 0; i < n; i++) elevation[i] = graph.cells.b[i] ? -1 : coastAt(points[i][0], points[i][1]);

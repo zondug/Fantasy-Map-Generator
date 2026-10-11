@@ -57,6 +57,17 @@ describe("noiseCoast", () => {
     expect(run(coarse, "e", 0.4, 3, 0).heights).not.toEqual(heights);
   });
 
+  it("keeps scattered-circle land off the map edge", () => {
+    for (const seed of ["f", "g", "h"]) {
+      const { heights } = run(coarse, seed, 0.5, 3, 4);
+      let nearest = Infinity;
+      coarse.points.forEach(([x, y]: [number, number], i: number) => {
+        if (heights[i] >= 20) nearest = Math.min(nearest, x, W - x, y, H - y);
+      });
+      expect(nearest / (H / 2)).toBeGreaterThan(0.1);
+    }
+  });
+
   it("places no ridges when ranges is 0", () => {
     expect(run(coarse, "d", 0.45, 0).ridges.some(r => r > 0)).toBe(false);
   });
