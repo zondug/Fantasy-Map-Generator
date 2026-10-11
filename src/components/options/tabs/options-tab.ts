@@ -244,7 +244,7 @@ const TEMPLATE = /* html */ `
           data-option="points"
           type="range"
           min="1"
-          max="13"
+          max="19"
           value="4"
           data-cells="10000"
         />

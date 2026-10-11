@@ -148,6 +148,17 @@ const fractious = `Hill 12-15 50-80 5-95 5-95
   Add -20 30-100 0 0
   Range 6-8 40-50 5-95 10-90`;
 
+// ocean on every edge and mostly low land, for wrapping onto the 3D globe (from barrulus/Fantasy-Map-Generator, MIT)
+const globeWorld = `Hill 1 60-70 22-38 20-80
+  Hill 1 60-70 62-78 20-80
+  Hill 4-5 15-25 20-80 15-85
+  Smooth 2 0 0 0
+  Multiply 0.35 land 0 0
+  Range 2-3 60-75 25-75 25-75
+  Smooth 2 0 0 0
+  Mask 2 0 0 0
+  Smooth 3 0 0 0`;
+
 // River-first variants: the base template only shapes the coast and the rough relief, then the Rivers step rebuilds land heights
 const riverStep = "\n  Rivers 80-95 0 6 0";
 
@@ -176,7 +187,9 @@ export const heightmapTemplates: Record<string, HeightmapTemplate> = {
   riverContinents: { id: 14, name: "River Continents", template: continents + riverStep, probability: 0 },
   riverPangea: { id: 15, name: "River Pangea", template: pangea + riverStep, probability: 0 },
   riverOldWorld: { id: 16, name: "River Old World", template: oldWorld + riverStep, probability: 0 },
-  riverHighIsland: { id: 17, name: "River High Island", template: highIsland + riverStep, probability: 0 }
+  riverHighIsland: { id: 17, name: "River High Island", template: highIsland + riverStep, probability: 0 },
+  globeWorld: { id: 18, name: "Globe World", template: globeWorld, probability: 0 },
+  riverGlobeWorld: { id: 19, name: "River Globe World", template: globeWorld + riverStep, probability: 0 }
 };
 
 declare global {
