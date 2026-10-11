@@ -34,7 +34,7 @@ export const RIVER_RELIEF_DEFAULTS: Omit<RiverReliefOptions, "random" | "top" | 
   costNoise: 0.1,
   smooth: 2,
   reliefWeight: 0,
-  ridgeWeight: 4
+  ridgeWeight: 6
 };
 
 // land height quantiles of the REX INVIS peaks generator: keeps mountain and hill shares, changes only their placement

@@ -149,7 +149,7 @@ const fractious = `Hill 12-15 50-80 5-95 5-95
   Range 6-8 40-50 5-95 10-90`;
 
 // River-first variants: the base template only shapes the coast and the rough relief, then the Rivers step rebuilds land heights
-const riverStep = "\n  Rivers 80-95 0 4 0";
+const riverStep = "\n  Rivers 80-95 0 6 0";
 
 export type HeightmapTemplate = {
   id: number;
