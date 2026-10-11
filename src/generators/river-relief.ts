@@ -195,7 +195,9 @@ export function riverRelief(
     if (carved[next] > carved[cell] - 1e-6) carved[next] = carved[cell] - 1e-6;
   }
 
-  for (let pass = 0; pass < options.smooth; pass++) {
+  // same smoothing radius in map units at any density
+  const passes = Math.round(options.smooth * Math.sqrt(n / 10000));
+  for (let pass = 0; pass < passes; pass++) {
     const previous = Float32Array.from(carved);
     for (const cell of order) {
       let sum = previous[cell];

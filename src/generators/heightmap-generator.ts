@@ -4,6 +4,7 @@ import type { MapData } from "@/components/options-schema";
 import { heightmapTemplates } from "@/data/heightmap-templates";
 import type { GridGraph } from "@/types/GridGraph";
 import { getNumberInRange, lim, minmax, P, rand } from "../utils";
+import { NOISE_COAST_DEFAULTS, noiseCoast } from "./noise-coast";
 import { RIVER_RELIEF_DEFAULTS, riverRelief } from "./river-relief";
 
 declare global {
@@ -22,6 +23,7 @@ type Tool =
   | "Multiply"
   | "Smooth"
   | "Power"
+  | "Coast"
   | "Rivers";
 
 class HeightmapModule {
@@ -538,6 +540,22 @@ class HeightmapModule {
     this.heights = inverted;
   }
 
+  /** replace the heightmap with a noise coastline of the given land share (%) and mountain ridges */
+  addCoast(land: string, ranges: string): void {
+    if (!this.heights || !this.grid) return;
+    const options = {
+      ...NOISE_COAST_DEFAULTS,
+      width: this.width,
+      height: this.height,
+      land: getNumberInRange(land) / 100,
+      ranges: Math.max(0, Math.round(getNumberInRange(ranges))),
+      random: Math.random
+    };
+    const { heights, ridges } = noiseCoast(this.grid, options);
+    this.heights = heights;
+    this.ridges = ridges;
+  }
+
   /** rebuild land heights from a river network grown inland from the coast. `top` is the highest land height */
   carveRivers(
     top: string,
@@ -600,6 +618,10 @@ class HeightmapModule {
     }
     if (tool === "Smooth") {
       this.smooth(+a2);
+      return;
+    }
+    if (tool === "Coast") {
+      this.addCoast(a2, a3);
       return;
     }
     if (tool === "Rivers") {

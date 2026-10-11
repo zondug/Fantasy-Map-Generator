@@ -189,7 +189,10 @@ export const heightmapTemplates: Record<string, HeightmapTemplate> = {
   riverOldWorld: { id: 16, name: "River Old World", template: oldWorld + riverStep, probability: 0 },
   riverHighIsland: { id: 17, name: "River High Island", template: highIsland + riverStep, probability: 0 },
   globeWorld: { id: 18, name: "Globe World", template: globeWorld, probability: 0 },
-  riverGlobeWorld: { id: 19, name: "River Globe World", template: globeWorld + riverStep, probability: 0 }
+  riverGlobeWorld: { id: 19, name: "River Globe World", template: globeWorld + riverStep, probability: 0 },
+  noiseMainland: { id: 20, name: "Noise Mainland", template: `Coast 55-65 4 0 0${riverStep}`, probability: 0 },
+  noiseContinent: { id: 21, name: "Noise Continent", template: `Coast 40-50 3 0 0${riverStep}`, probability: 0 },
+  noiseIsland: { id: 22, name: "Noise Island", template: `Coast 25-35 2 0 0${riverStep}`, probability: 0 }
 };
 
 declare global {
