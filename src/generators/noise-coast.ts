@@ -221,9 +221,62 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
   }
   if (!peaks.length) peaks.push(latticePoint(deepest));
 
-  // 3) ridge lines as segments: the main peak 1, the others 0.55-0.8; close peaks joined with a saddle, lone ones get a wandering tail
-  type Segment = { ax: number; ay: number; bx: number; by: number; ha: number; hb: number; saddle: boolean };
+  // 3) ridge lines as curved polylines: the main peak 1, the others 0.55-0.8. Close peaks are joined by a
+  // midpoint-displaced line with a saddle, lone peaks grow two wandering arms; spurs branch off both
+  type Segment = { ax: number; ay: number; bx: number; by: number; ha: number; hb: number; wa: number; wb: number };
+  type Vertex = [number, number, number]; // x, y, crest height
   const segments: Segment[] = [];
+  const bandWidth = half * options.ridgeWidth;
+  const widthNoise = simplex(random);
+  const widthAt = (x: number, y: number) =>
+    bandWidth * (0.65 + 0.7 * ((fbm(widthNoise, (x / half) * 3, (y / half) * 3, 2) + 1) / 2));
+  const onLand = (x: number, y: number) => x > 0 && y > 0 && x < width && y < height && coastAt(x, y) >= threshold;
+  const step = half * 0.02;
+
+  const addLine = (line: Vertex[], scale = 1) => {
+    for (let k = 1; k < line.length; k++) {
+      const [ax, ay, ha] = line[k - 1];
+      const [bx, by, hb] = line[k];
+      segments.push({ ax, ay, bx, by, ha, hb, wa: widthAt(ax, ay) * scale, wb: widthAt(bx, by) * scale });
+    }
+  };
+  // a wandering arm: heading drifts with a slowly changing curvature, height falls off to `fade` of the start
+  const growArm = (x: number, y: number, heading: number, length: number, h: number, fade: number): Vertex[] => {
+    const arm: Vertex[] = [[x, y, h]];
+    const steps = Math.max(2, Math.ceil(length / step));
+    let curve = (random() - 0.5) * 0.06;
+    for (let k = 1; k <= steps; k++) {
+      curve = Math.max(-0.06, Math.min(0.06, curve + (random() - 0.5) * 0.03) * 0.97); // drifts back toward straight
+      heading += curve + (random() - 0.5) * 0.12;
+      const nx = x + Math.cos(heading) * step;
+      const ny = y + Math.sin(heading) * step;
+      if (!onLand(nx, ny)) break;
+      [x, y] = [nx, ny];
+      arm.push([x, y, h * (1 - (1 - fade) * (k / steps))]);
+    }
+    return arm;
+  };
+  // spurs: short side ridges off a main line, lower and narrower
+  const addSpurs = (line: Vertex[]) => {
+    for (let k = 1; k < line.length - 1; k++) {
+      if (random() > 0.1) continue;
+      const [x, y, h] = line[k];
+      const dir = Math.atan2(line[k + 1][1] - line[k - 1][1], line[k + 1][0] - line[k - 1][0]);
+      const side = (random() < 0.5 ? 1 : -1) * (Math.PI / 2.6 + random() * (Math.PI / 5));
+      const spur = growArm(x, y, dir + side, half * (0.1 + random() * 0.15), h * 0.8, 0.35);
+      if (spur.length > 2) addLine(spur, 0.75);
+    }
+  };
+  const displace = (a: Vertex, b: Vertex, depth: number): Vertex[] => {
+    if (depth === 0) return [a, b];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const offset = (random() * 2 - 1) * length * 0.22;
+    const nx = -(b[1] - a[1]) / (length || 1);
+    const ny = (b[0] - a[0]) / (length || 1);
+    const mid: Vertex = [(a[0] + b[0]) / 2 + nx * offset, (a[1] + b[1]) / 2 + ny * offset, (a[2] + b[2]) / 2];
+    return [...displace(a, mid, depth - 1), ...displace(mid, b, depth - 1).slice(1)];
+  };
+
   const peakHeight = peaks.map((_, index) => (index ? 0.55 + random() * 0.25 : 1));
   const linked = new Set<number>();
   for (let a = 0; a < peaks.length; a++) {
@@ -232,32 +285,25 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
       const [bx, by] = peaks[b];
       if (Math.hypot(bx - ax, by - ay) > half * options.connectDistance) continue;
       linked.add(a).add(b);
-      segments.push({ ax, ay, bx, by, ha: peakHeight[a], hb: peakHeight[b], saddle: true });
+      const line = displace([ax, ay, peakHeight[a]], [bx, by, peakHeight[b]], 5);
+      line.forEach((vertex, k) => {
+        vertex[2] *= 0.85 + 0.15 * Math.abs((k / (line.length - 1)) * 2 - 1); // saddle between the peaks
+      });
+      addLine(line);
+      addSpurs(line);
     }
   }
-  const step = half * 0.02;
   peaks.forEach(([px, py], index) => {
-    const tails = linked.has(index) ? 0 : 2; // a lone peak gets a range running both ways
-    let angle = random() * Math.PI * 2;
-    for (let tail = 0; tail < tails; tail++, angle += Math.PI) {
-      let heading = angle;
-      let [x, y] = [px, py];
-      const steps = Math.ceil((half * options.tailLength) / step / 2);
-      for (let s = 1; s <= steps; s++) {
-        if (random() < 0.08) heading += (random() < 0.5 ? 1 : -1) * (Math.PI / 6);
-        const nx = x + Math.cos(heading) * step;
-        const ny = y + Math.sin(heading) * step;
-        if (nx < 0 || ny < 0 || nx > width || ny > height || coastAt(nx, ny) < threshold) break;
-        const h0 = peakHeight[index] * (1 - 0.3 * ((s - 1) / steps));
-        const h1 = peakHeight[index] * (1 - 0.3 * (s / steps));
-        segments.push({ ax: x, ay: y, bx: nx, by: ny, ha: h0, hb: h1, saddle: false });
-        [x, y] = [nx, ny];
-      }
+    if (linked.has(index)) return;
+    const angle = random() * Math.PI * 2;
+    for (const heading of [angle, angle + Math.PI + (random() - 0.5) * 0.8]) {
+      const arm = growArm(px, py, heading, (half * options.tailLength) / 2, peakHeight[index], 0.7);
+      addLine(arm);
+      addSpurs(arm);
     }
   });
 
-  // 4) ridge band: falloff with noise-jittered distance to the nearest segment, over land only
-  const bandWidth = half * options.ridgeWidth;
+  // 4) ridge band: falloff with noise-jittered distance to the nearest segment, width varying along the ridge, land only
   const jitterNoise = simplex(random);
   for (let i = 0; i < n; i++) {
     if (elevation[i] < threshold) continue;
@@ -265,15 +311,16 @@ export function noiseCoast(graph: NoiseCoastGraph, options: NoiseCoastOptions): 
     const jitter = 1 + 0.35 * fbm(jitterNoise, (x / half) * 8, (y / half) * 8, 3);
     let strength = 0;
     for (const sg of segments) {
-      if (x < Math.min(sg.ax, sg.bx) - bandWidth * 1.5 || x > Math.max(sg.ax, sg.bx) + bandWidth * 1.5) continue;
-      if (y < Math.min(sg.ay, sg.by) - bandWidth * 1.5 || y > Math.max(sg.ay, sg.by) + bandWidth * 1.5) continue;
+      const reach = Math.max(sg.wa, sg.wb) * 1.5;
+      if (x < Math.min(sg.ax, sg.bx) - reach || x > Math.max(sg.ax, sg.bx) + reach) continue;
+      if (y < Math.min(sg.ay, sg.by) - reach || y > Math.max(sg.ay, sg.by) + reach) continue;
       const dx = sg.bx - sg.ax;
       const dy = sg.by - sg.ay;
       const t = Math.min(1, Math.max(0, ((x - sg.ax) * dx + (y - sg.ay) * dy) / Math.max(1e-6, dx * dx + dy * dy)));
+      const band = sg.wa + (sg.wb - sg.wa) * t;
       const d = Math.hypot(x - (sg.ax + dx * t), y - (sg.ay + dy * t)) * jitter;
-      if (d >= bandWidth) continue;
-      const crest = (sg.ha + (sg.hb - sg.ha) * t) * (sg.saddle ? 0.85 + 0.15 * Math.abs(t * 2 - 1) : 1);
-      strength = Math.max(strength, crest * (1 - d / bandWidth));
+      if (d >= band) continue;
+      strength = Math.max(strength, (sg.ha + (sg.hb - sg.ha) * t) * (1 - d / band));
     }
     if (!strength) continue;
     ridges[i] = strength;

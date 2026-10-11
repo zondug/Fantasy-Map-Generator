@@ -37,7 +37,10 @@ Replaces the heightmap with a coastline and mountain ridges that do not depend o
    noise without it, plus a shallow coastal shelf over 0.12 × half-size, so the finished map has no dark edge band.
 2. Peaks = up to `ranges` points on a fixed 96-column lattice, inland past 30% of the deepest coast distance,
    ranked by ridged noise and kept `half / (ranges + 1)` apart. The first peak is 1, others 0.55–0.8.
-3. Ridges = segments between peaks closer than 0.45 × half-size (with a saddle), and a wandering two-way tail for lone peaks.
+3. Ridges = curved polylines. Peaks closer than 0.45 × half-size are joined by a 5-level midpoint-displaced line
+   (offsets up to 0.22 × each piece's length) with a saddle; a lone peak grows two arms whose heading drifts with a
+   slowly changing, self-damping curvature. About one vertex in ten sprouts a lower, narrower spur at 70–105°.
+   Band width varies along the ridge with noise (0.65–1.35 ×).
 4. Each land cell gets a ridge strength by noise-jittered distance to the nearest segment; this feeds `Rivers` as the
    `ridgeWeight` input, like template `Range` steps do.
 
