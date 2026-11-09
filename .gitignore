@@ -20,3 +20,4 @@
 # nix build output
 /result
 /result-*
+.claude/settings.local.json
